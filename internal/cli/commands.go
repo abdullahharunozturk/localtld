@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -19,6 +18,7 @@ import (
 func Setup() error {
 	tld := config.GetTLD()
 	fmt.Println(bold("localtld setup"))
+	tld = promptTLD(tld)
 	fmt.Printf("  TLD: .%s\n", tld)
 	if err := confirmTLD(tld); err != nil {
 		return err
@@ -44,9 +44,9 @@ func apply(tld string) error {
 	if err != nil {
 		return err
 	}
-	caddy, err := exec.LookPath("caddy")
+	caddy, err := ensureCaddy()
 	if err != nil {
-		return fmt.Errorf("caddy not found on PATH — install it (brew install caddy)")
+		return err
 	}
 	svc := service.New()
 	fmt.Println("  DNS server: installing service on :53 (needs admin once)")
