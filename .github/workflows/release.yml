@@ -1,0 +1,29 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          version: '~> v2'
+          args: release --clean
+        env:
+          # A PAT (repo scope) is required so GoReleaser can push the cask to
+          # homebrew-localtld, open the winget PR to microsoft/winget-pkgs
+          # (from the abdullahharunozturk/winget-pkgs fork), and update the
+          # scoop-localtld bucket. Falls back to GITHUB_TOKEN for the release.
+          GITHUB_TOKEN: ${{ secrets.GORELEASER_TOKEN || secrets.GITHUB_TOKEN }}
