@@ -60,7 +60,7 @@ Don't want localtld in your `devDependencies` (or it isn't installed on every ma
 - Machine **has** the `localtld` binary → pretty domain.
 - Machine **doesn't** → plain `next dev` (`localhost:PORT`), no error, zero dependency.
 
-`command -v` is POSIX `sh` (macOS/Linux). This is the safest wiring while localtld isn't a published npm package yet.
+`command -v` is POSIX `sh` (macOS/Linux). Use this when you want the repo to carry **zero** localtld dependency — no `devDependencies` entry, no assumption that any teammate has it installed. (Prefer the pinned `devDependencies` approach above if you'd rather everyone get the same domain automatically.)
 
 ## How it works
 
