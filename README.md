@@ -107,14 +107,19 @@ A teammate copies `.env.example` → `.env`; if they use localtld, they swap the
 ## Install
 
 ```bash
-brew install localtld        # (coming soon — primary channel)
-# or
-curl -fsSL https://localtld.sh | bash
+# Homebrew (primary)
+brew install abdullahharunozturk/localtld/localtld
+
+# or npm
+npm install -g localtld
+
+# or curl (coming soon — needs localtld.sh to be live)
+# curl -fsSL https://localtld.sh | bash
 
 localtld setup               # pick a TLD, configure dnsmasq + Caddy (asks for sudo)
 ```
 
-Requires macOS + Homebrew. `setup` installs `dnsmasq`, `caddy`, and `jq` if missing.
+Requires macOS + Homebrew. Brew pulls in `caddy`, `dnsmasq`, and `jq` automatically; via npm/curl, `setup` installs them if missing.
 
 ## Commands
 
