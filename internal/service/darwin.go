@@ -36,8 +36,9 @@ func (darwinManager) Install(u Unit) error {
 	if err := sysexec.WriteSudo(plistPath(u.Name), plist); err != nil {
 		return err
 	}
-	// Reload cleanly whether or not it was already loaded.
-	_ = sysexec.Sudo("launchctl", "bootout", "system", plistPath(u.Name))
+	// Reload cleanly whether or not it was already loaded (bootout fails
+	// harmlessly on first install — keep it quiet).
+	_ = sysexec.SudoQuiet("launchctl", "bootout", "system", plistPath(u.Name))
 	if err := sysexec.Sudo("launchctl", "bootstrap", "system", plistPath(u.Name)); err != nil {
 		return err
 	}

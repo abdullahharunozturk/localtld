@@ -19,6 +19,14 @@ func Sudo(args ...string) error {
 	return cmd.Run()
 }
 
+// SudoQuiet runs a privileged command discarding its output — for best-effort
+// cleanup steps whose failure is expected and shouldn't be shown.
+func SudoQuiet(args ...string) error {
+	cmd := exec.Command("sudo", args...)
+	cmd.Stdin = os.Stdin
+	return cmd.Run()
+}
+
 // WriteSudo writes content to a root-owned path via `sudo tee`.
 func WriteSudo(path, content string) error {
 	if err := Sudo("mkdir", "-p", filepath.Dir(path)); err != nil {

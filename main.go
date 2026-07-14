@@ -16,13 +16,20 @@ import (
 var version = "dev"
 
 func main() {
+	args := os.Args[1:]
+	cmd := ""
+	if len(args) > 0 {
+		cmd = args[0]
+	}
 	// Never run under sudo: it would corrupt config ownership and package paths.
-	// Privileged steps elevate themselves only when needed.
-	if os.Geteuid() == 0 && os.Getenv("LOCALTLD_ALLOW_ROOT") == "" {
+	// Privileged steps elevate themselves only when needed. Exception: serve-dns
+	// is the internal daemon and is MEANT to run as root (launched by the OS
+	// service to bind :53).
+	if cmd != "serve-dns" && os.Geteuid() == 0 && os.Getenv("LOCALTLD_ALLOW_ROOT") == "" {
 		fmt.Fprintln(os.Stderr, "localtld: do not run with sudo — it asks for admin rights only when it needs them")
 		os.Exit(1)
 	}
-	if err := dispatch(os.Args[1:]); err != nil {
+	if err := dispatch(args); err != nil {
 		fmt.Fprintln(os.Stderr, "localtld: "+err.Error())
 		os.Exit(1)
 	}
