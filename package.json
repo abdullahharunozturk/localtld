@@ -1,6 +1,7 @@
 {
-  "name": "localtld",
+  "name": "@abdullahharunozturk/localtld",
   "version": "0.1.0",
+  "publishConfig": { "access": "public" },
   "description": "Give your local projects real domains on dynamic ports — access panel.aaron.localtld instead of chasing ports.",
   "bin": {
     "localtld": "bin/localtld"

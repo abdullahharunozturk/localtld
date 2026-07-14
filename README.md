@@ -26,7 +26,7 @@ Wire it once in a project and it *just works* on any machine that has localtld s
     "dev": "localtld run -- next dev"
   },
   "devDependencies": {
-    "localtld": "^0.1.0"
+    "@abdullahharunozturk/localtld": "^0.1.0"
   }
 }
 ```
@@ -110,8 +110,8 @@ A teammate copies `.env.example` → `.env`; if they use localtld, they swap the
 # Homebrew (primary)
 brew install abdullahharunozturk/localtld/localtld
 
-# or npm
-npm install -g localtld
+# or npm (CLI is still `localtld`)
+npm install -g @abdullahharunozturk/localtld
 
 # or curl (coming soon — needs localtld.sh to be live)
 # curl -fsSL https://localtld.sh | bash
