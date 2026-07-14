@@ -23,9 +23,9 @@ Wire it once in a project and it *just works* on any machine that has localtld s
 {
   "localtld": "panel.aaron",
   "scripts": {
-    "dev": "localtld run -- next dev"
+    "dev": "if command -v localtld >/dev/null 2>&1; then localtld run -- next dev; else next dev; fi"
   },
-  "devDependencies": {
+  "optionalDependencies": {
     "@abdullahharunozturk/localtld": "^0.1.0"
   }
 }
@@ -34,14 +34,22 @@ Wire it once in a project and it *just works* on any machine that has localtld s
 Now the normal workflow does everything:
 
 ```bash
-pnpm install     # localtld binary lands in node_modules/.bin
-pnpm dev         # → http://panel.aaron.localtld
+pnpm install     # on macOS the localtld binary lands in node_modules/.bin
+pnpm dev
 ```
 
-- **Machine has localtld configured** → the dev server comes up at `panel.aaron.localtld`.
-- **Machine does *not* have it** → `localtld run` transparently falls back and runs the command as-is (`localhost:PORT`). The project still works; nobody is blocked.
+**Why `optionalDependencies` + the guard, not a plain `devDependencies` entry:**
 
-So a teammate who clones the repo and runs `pnpm dev` either sees the pretty domain (if their machine is set up) or plain `localhost` — never an error.
+- localtld is macOS-only (`"os": ["darwin"]`). As an *optional* dependency, Linux/Windows/CI **skip it silently** — a regular `dependencies`/`devDependencies` entry would fail the whole install with `EBADPLATFORM`.
+- The `command -v` guard lets the `dev` script survive on any machine where the binary isn't present (non-macOS, or one that skipped it).
+
+Result — zero action required from your teammates, and nobody needs to know localtld exists:
+
+| Machine | `pnpm install` | `pnpm dev` |
+|---------|----------------|------------|
+| macOS, set up | installs localtld | `panel.aaron.localtld` |
+| macOS, not set up | installs localtld | offers `localtld setup`, else `localhost` |
+| Linux / Windows / CI | skips it (no error) | plain `next dev` on `localhost` |
 
 ### Without adding a dependency
 
