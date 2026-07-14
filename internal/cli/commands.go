@@ -10,6 +10,7 @@ import (
 	"github.com/abdullahharunozturk/localtld/internal/config"
 	"github.com/abdullahharunozturk/localtld/internal/dns"
 	"github.com/abdullahharunozturk/localtld/internal/proxy"
+	"github.com/abdullahharunozturk/localtld/internal/service"
 )
 
 // Setup configures DNS + Caddy for the current machine TLD.
@@ -28,6 +29,10 @@ func Setup() error {
 	fmt.Printf("  DNS: %s\n", p.Name())
 	if err := p.Setup(tld); err != nil {
 		return fmt.Errorf("dns setup: %w", err)
+	}
+	fmt.Println("  Caddy: installing background service (needs admin once)")
+	if err := service.New().EnsureCaddy(config.CaddyfilePath()); err != nil {
+		return fmt.Errorf("caddy service: %w", err)
 	}
 	fmt.Println(green("✓ setup complete"))
 	fmt.Println(dim(`  Add "localtld": "myapp" to package.json, then: localtld run -- <dev cmd>`))
@@ -93,6 +98,7 @@ func Doctor() error {
 
 // Uninstall reverts DNS changes and removes local config.
 func Uninstall() error {
+	_ = service.New().StopCaddy()
 	if err := dns.New().Teardown(config.GetTLD()); err != nil {
 		return err
 	}
