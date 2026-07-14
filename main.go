@@ -41,6 +41,9 @@ func dispatch(args []string) error {
 		return nil
 	case "setup":
 		return cli.Setup()
+	case "serve-dns":
+		// hidden: runs the built-in DNS server (invoked by the OS service)
+		return cli.ServeDNS(args[1:])
 	case "run":
 		return cli.Run(args[1:])
 	case "list":

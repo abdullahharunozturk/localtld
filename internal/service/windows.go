@@ -3,24 +3,33 @@
 package service
 
 import (
-	"os"
-	"os/exec"
+	"fmt"
+	"strings"
+
+	"github.com/abdullahharunozturk/localtld/internal/sysexec"
 )
 
 type windowsManager struct{}
 
 func newManager() Manager { return windowsManager{} }
 
-// On Windows, binding :80 doesn't require elevation, so Caddy runs in the
-// background via its own `start`/`stop` lifecycle.
-func (windowsManager) EnsureCaddy(configPath string) error {
-	cmd := exec.Command("caddy", "start", "--config", configPath, "--adapter", "caddyfile")
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	return cmd.Run()
+func taskName(name string) string { return "localtld-" + name }
+
+// Install registers a scheduled task that runs the command at logon with the
+// highest privileges (needed to bind :53/:80), then starts it now.
+func (windowsManager) Install(u Unit) error {
+	cmd := u.Exec
+	if len(u.Args) > 0 {
+		cmd += " " + strings.Join(u.Args, " ")
+	}
+	create := fmt.Sprintf(`schtasks /Create /TN "%s" /TR '%s' /SC ONLOGON /RL HIGHEST /F`, taskName(u.Name), cmd)
+	if err := sysexec.PS(create); err != nil {
+		return err
+	}
+	return sysexec.PS(fmt.Sprintf(`schtasks /Run /TN "%s"`, taskName(u.Name)))
 }
 
-func (windowsManager) StopCaddy() error {
-	cmd := exec.Command("caddy", "stop")
-	cmd.Stdout, cmd.Stderr = os.Stderr, os.Stderr
-	return cmd.Run()
+func (windowsManager) Uninstall(name string) error {
+	_ = sysexec.PS(fmt.Sprintf(`schtasks /End /TN "%s"`, taskName(name)))
+	return sysexec.PS(fmt.Sprintf(`schtasks /Delete /TN "%s" /F`, taskName(name)))
 }

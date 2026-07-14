@@ -4,49 +4,47 @@ package service
 
 import (
 	"fmt"
-	"os/exec"
+	"strings"
 
 	"github.com/abdullahharunozturk/localtld/internal/sysexec"
 )
-
-const darwinLabel = "sh.localtld.caddy"
 
 type darwinManager struct{}
 
 func newManager() Manager { return darwinManager{} }
 
-func (darwinManager) EnsureCaddy(configPath string) error {
-	caddy, err := exec.LookPath("caddy")
-	if err != nil {
-		return fmt.Errorf("caddy not found on PATH — install it (brew install caddy)")
+func label(name string) string     { return "sh.localtld." + name }
+func plistPath(name string) string { return "/Library/LaunchDaemons/" + label(name) + ".plist" }
+
+func (darwinManager) Install(u Unit) error {
+	var args strings.Builder
+	args.WriteString("<string>" + u.Exec + "</string>")
+	for _, a := range u.Args {
+		args.WriteString("\n    <string>" + a + "</string>")
 	}
-	plistPath := "/Library/LaunchDaemons/" + darwinLabel + ".plist"
 	plist := fmt.Sprintf(`<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
   <key>Label</key><string>%s</string>
   <key>ProgramArguments</key><array>
-    <string>%s</string><string>run</string>
-    <string>--config</string><string>%s</string>
-    <string>--adapter</string><string>caddyfile</string>
+    %s
   </array>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
 </dict></plist>
-`, darwinLabel, caddy, configPath)
-	if err := sysexec.WriteSudo(plistPath, plist); err != nil {
+`, label(u.Name), args.String())
+	if err := sysexec.WriteSudo(plistPath(u.Name), plist); err != nil {
 		return err
 	}
 	// Reload cleanly whether or not it was already loaded.
-	_ = sysexec.Sudo("launchctl", "bootout", "system", plistPath)
-	if err := sysexec.Sudo("launchctl", "bootstrap", "system", plistPath); err != nil {
+	_ = sysexec.Sudo("launchctl", "bootout", "system", plistPath(u.Name))
+	if err := sysexec.Sudo("launchctl", "bootstrap", "system", plistPath(u.Name)); err != nil {
 		return err
 	}
-	return sysexec.Sudo("launchctl", "kickstart", "-k", "system/"+darwinLabel)
+	return sysexec.Sudo("launchctl", "kickstart", "-k", "system/"+label(u.Name))
 }
 
-func (darwinManager) StopCaddy() error {
-	plistPath := "/Library/LaunchDaemons/" + darwinLabel + ".plist"
-	_ = sysexec.Sudo("launchctl", "bootout", "system", plistPath)
-	return sysexec.Sudo("rm", "-f", plistPath)
+func (darwinManager) Uninstall(name string) error {
+	_ = sysexec.Sudo("launchctl", "bootout", "system", plistPath(name))
+	return sysexec.Sudo("rm", "-f", plistPath(name))
 }
