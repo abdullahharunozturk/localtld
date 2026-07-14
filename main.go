@@ -12,7 +12,8 @@ import (
 	"github.com/abdullahharunozturk/localtld/internal/cli"
 )
 
-const version = "0.1.0"
+// version is injected at release time via -ldflags "-X main.version=...".
+var version = "dev"
 
 func main() {
 	// Never run under sudo: it would corrupt config ownership and package paths.

@@ -1,0 +1,82 @@
+# GoReleaser — builds cross-platform binaries and publishes to brew/winget/scoop.
+# Docs: https://goreleaser.com   Validate: goreleaser check
+version: 2
+
+project_name: localtld
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: localtld
+    main: .
+    binary: localtld
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+
+archives:
+  - id: default
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - README.md
+      - LICENSE
+
+checksum:
+  name_template: checksums.txt
+
+# Homebrew (macOS/Linux) → cask in the abdullahharunozturk/homebrew-localtld tap.
+# Casks are the modern way to ship pre-compiled binaries; `brew install
+# abdullahharunozturk/localtld/localtld` still resolves it.
+homebrew_casks:
+  - name: localtld
+    repository:
+      owner: abdullahharunozturk
+      name: homebrew-localtld
+    directory: Casks
+    homepage: https://localtld.sh
+    description: Give your local projects real domains on dynamic ports
+    license: MIT
+    dependencies:
+      - formula: caddy
+
+# winget (Windows) → opens a PR to microsoft/winget-pkgs from a fork.
+winget:
+  - name: localtld
+    package_identifier: abdullahharunozturk.localtld
+    publisher: Abdullah Harun Öztürk
+    publisher_url: https://github.com/abdullahharunozturk
+    license: MIT
+    homepage: https://localtld.sh
+    short_description: Give your local projects real domains on dynamic ports
+    repository:
+      owner: abdullahharunozturk
+      name: winget-pkgs
+      branch: localtld-{{ .Version }}
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+
+# Scoop (Windows) → the abdullahharunozturk/scoop-localtld bucket.
+scoops:
+  - repository:
+      owner: abdullahharunozturk
+      name: scoop-localtld
+    homepage: https://localtld.sh
+    description: Give your local projects real domains on dynamic ports
+    license: MIT
+
+release:
+  github:
+    owner: abdullahharunozturk
+    name: localtld
