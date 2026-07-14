@@ -8,3 +8,8 @@ tmp/
 
 # IANA TLD cache (downloaded by setup)
 iana-tlds.txt
+
+# Go build artifacts
+/localtld
+/dist/
+*.test
