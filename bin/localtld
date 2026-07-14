@@ -1,0 +1,368 @@
+#!/usr/bin/env bash
+#
+# localtld — give your local projects a domain on a dynamic port.
+#   package.json → "localtld": "panel.aaron"
+#   $ localtld run -- pnpm dev   →   http://panel.aaron.localtld  (dynamic port)
+#
+# It's glue: it orchestrates dnsmasq (DNS) + Caddy (reverse proxy).
+# https://github.com/abdullahharunozturk/localtld  ·  MIT
+
+set -euo pipefail
+
+VERSION="0.1.0"
+DEFAULT_TLD="localtld"
+
+CONFIG_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/localtld"
+CONFIG_FILE="$CONFIG_DIR/config"
+SITES_DIR="$CONFIG_DIR/sites"
+IANA_LIST="$CONFIG_DIR/iana-tlds.txt"
+
+BREW_PREFIX="$(brew --prefix 2>/dev/null || echo /opt/homebrew)"
+CADDYFILE="$BREW_PREFIX/etc/Caddyfile"
+
+# ── colors / logging ─────────────────────────────────────────────────────────
+if [ -t 1 ]; then
+  BOLD=$'\033[1m'; RED=$'\033[1;31m'; GREEN=$'\033[1;32m'; YELLOW=$'\033[1;33m'; DIM=$'\033[2m'; RESET=$'\033[0m'
+else
+  BOLD=; RED=; GREEN=; YELLOW=; DIM=; RESET=
+fi
+info() { printf '%s\n' "$*"; }
+ok()   { printf '%s✓%s %s\n' "$GREEN" "$RESET" "$*"; }
+warn() { printf '%s!%s %s\n' "$YELLOW" "$RESET" "$*"; }
+die()  { printf '%s✗ %s%s\n' "$RED" "$*" "$RESET" >&2; exit 1; }
+
+# ── helpers ──────────────────────────────────────────────────────────────────
+need() { command -v "$1" >/dev/null 2>&1 || die "'$1' is required. Install: brew install $1"; }
+
+get_tld() {
+  [ -f "$CONFIG_FILE" ] && { grep -E '^TLD=' "$CONFIG_FILE" | tail -1 | cut -d= -f2; return; }
+  printf '%s\n' "$DEFAULT_TLD"
+}
+
+# Read the "localtld" label from package.json. Prefer jq; fall back to grep so we
+# can still detect the label on a fresh machine where setup hasn't installed jq.
+read_label() {
+  [ -f package.json ] || return 0
+  if command -v jq >/dev/null 2>&1; then
+    jq -r '.localtld // empty' package.json 2>/dev/null || true
+  else
+    grep -oE '"localtld"[[:space:]]*:[[:space:]]*"[^"]*"' package.json 2>/dev/null \
+      | head -1 | sed -E 's/.*:[[:space:]]*"([^"]*)".*/\1/'
+  fi
+}
+
+# Find a free port in the ephemeral range (pure bash /dev/tcp, no dependencies).
+find_free_port() {
+  local p
+  while :; do
+    p=$(( (RANDOM % 16384) + 49152 ))
+    (exec 3<>"/dev/tcp/127.0.0.1/$p") 2>/dev/null || { printf '%s\n' "$p"; return; }
+  done
+}
+
+caddy_reload() {
+  caddy reload --config "$CADDYFILE" --adapter caddyfile >/dev/null 2>&1 \
+    || warn "caddy reload failed — run 'localtld doctor'"
+}
+
+# Is the given root TLD real (present in the IANA root zone)? 0=yes 1=no
+tld_is_real() {
+  local tld="$1"
+  # offline-safe fast list (common real TLDs)
+  case " com net org io dev app co tech sh me ai info biz xyz online site store cloud tv uk us de fr nl es it " in
+    *" $tld "*) return 0 ;;
+  esac
+  mkdir -p "$CONFIG_DIR"
+  [ -f "$IANA_LIST" ] || curl -fsSL https://data.iana.org/TLD/tlds-alpha-by-domain.txt -o "$IANA_LIST" 2>/dev/null || return 1
+  grep -qix "$tld" "$IANA_LIST"
+}
+
+# Warn about real-TLD/domain risk with the CORRECT scope (shared by setup & tld).
+#   single label + real TLD (com)   → hijacks ALL *.com → catastrophic, hard confirm
+#   multi-label (saka.com)           → hijacks only *.saka.com → soft confirm
+confirm_if_real_tld() {
+  local tld="$1" root="${1##*.}"     # saka.com → com
+  tld_is_real "$root" || return 0    # root isn't real → fully safe
+  local ans
+
+  if [ "$tld" = "$root" ]; then
+    # single label: /etc/resolver/com → ALL *.com resolve to 127.0.0.1 on this machine
+    info ""
+    printf '%s' "$RED"
+    info "⛔ DANGER: .$tld is a REAL TLD."
+    info "   Every *.$tld address on this machine will resolve to 127.0.0.1 — you'd lose access to all real .$tld sites."
+    printf '%s' "$RESET"
+    case "$tld" in dev|app) warn ".$tld is HSTS-preloaded — browsers force HTTPS, which breaks local http." ;; esac
+    printf '   Type exactly %s"I UNDERSTAND"%s to continue: ' "$BOLD" "$RESET"
+    read -r ans
+    [ "$ans" = "I UNDERSTAND" ] || die "cancelled"
+  else
+    # multi-label: /etc/resolver/saka.com → only *.saka.com; other .com sites are unaffected
+    info ""
+    printf '%s! NOTE:%s %s may be a real/registered domain.\n' "$YELLOW" "$RESET" "$tld"
+    info "   Only *.$tld resolves to 127.0.0.1 here — other .$root sites (x.$root, ...) are unaffected."
+    info "   Only risk: you won't be able to reach the real $tld site (if any) from this machine."
+    printf '   Continue? [y/N] '
+    read -r ans
+    case "$ans" in y|Y|yes|Yes) : ;; *) die "cancelled" ;; esac
+  fi
+}
+
+# Restart a brew service without invoking brew as root → avoids the "ownership"
+# and "must run as non-root" warnings on subsequent runs. Caddy/dnsmasq bind
+# privileged ports (:80 / :53), so they intentionally run as a root LaunchDaemon.
+restart_service() {
+  local name="$1"
+  sudo launchctl kickstart -k "system/homebrew.mxcl.$name" 2>/dev/null && return 0
+  sudo brew services restart "$name" >/dev/null 2>&1   # first install / fallback
+}
+restart_dnsmasq() { restart_service dnsmasq; }
+restart_caddy()   { restart_service caddy; }
+
+# Ask for sudo once, up front, with a clear reason — so later sudo calls in the
+# same run reuse the cached credential instead of prompting mid-flow. Idempotent.
+sudo_notice() {
+  sudo -n true 2>/dev/null && return 0   # already have a valid sudo session
+  info "${DIM}Some steps need admin rights (system DNS resolver + services). You'll be asked for your password once.${RESET}"
+  sudo -v
+}
+
+# ── setup ────────────────────────────────────────────────────────────────────
+cmd_setup() {
+  info "${BOLD}localtld setup${RESET}"
+  info ""
+
+  # dependencies
+  need brew
+  for dep in dnsmasq caddy jq; do
+    if ! command -v "$dep" >/dev/null 2>&1 && ! brew list "$dep" >/dev/null 2>&1; then
+      info "  brew install $dep ..."
+      brew install "$dep"
+    fi
+  done
+  ok "dependencies ready (dnsmasq, caddy, jq)"
+
+  # TLD selection
+  local cur; cur="$(get_tld)"
+  info ""
+  info "Choose a TLD ${DIM}(safe default: localtld · alternatives: test, aho, localtld.sh)${RESET}"
+  printf "  TLD [%s]: " "$cur"
+  local tld; read -r tld
+  tld="${tld:-$cur}"
+  tld="${tld#.}"                       # strip leading dot
+  tld="$(printf '%s' "$tld" | tr '[:upper:]' '[:lower:]')"
+  [ -n "$tld" ] || die "empty TLD"
+
+  confirm_if_real_tld "$tld"
+
+  mkdir -p "$CONFIG_DIR" "$SITES_DIR"
+  printf 'TLD=%s\n' "$tld" > "$CONFIG_FILE"
+  ok "TLD set: .$tld"
+
+  apply_dns "$tld"
+  apply_caddy
+  info ""
+  ok "Setup complete. Try it in a project:"
+  info "   ${DIM}package.json → \"localtld\": \"panel.aaron\"${RESET}"
+  info "   ${DIM}localtld run -- pnpm dev${RESET}   → http://panel.aaron.$tld"
+}
+
+# Write dnsmasq + the macOS resolver for the selected TLD.
+apply_dns() {
+  local tld="$1"
+  sudo_notice
+  local dq_dir="$BREW_PREFIX/etc/dnsmasq.d"
+  local dq_conf="$BREW_PREFIX/etc/dnsmasq.conf"
+  mkdir -p "$dq_dir"
+  if ! grep -q "conf-dir=$dq_dir" "$dq_conf" 2>/dev/null; then
+    printf '\n# localtld\nconf-dir=%s/,*.conf\n' "$dq_dir" >> "$dq_conf"
+  fi
+  printf 'address=/%s/127.0.0.1\n' "$tld" > "$dq_dir/localtld.conf"
+
+  # macOS resolver — makes the system send *.tld lookups to dnsmasq (127.0.0.1)
+  sudo mkdir -p /etc/resolver
+  printf 'nameserver 127.0.0.1\n' | sudo tee "/etc/resolver/$tld" >/dev/null
+  restart_dnsmasq
+  # CRITICAL: macOS only picks up /etc/resolver after a cache flush + mDNSResponder restart
+  sudo dscacheutil -flushcache 2>/dev/null || true
+  sudo killall mDNSResponder 2>/dev/null || true   # macOS 26: HUP isn't enough, full restart required
+  ok "DNS configured (*.$tld → 127.0.0.1)"
+}
+
+apply_caddy() {
+  cat > "$CADDYFILE" <<EOF
+{
+	auto_https off
+}
+
+import $SITES_DIR/*.caddy
+EOF
+  sudo_notice
+  restart_caddy
+  pgrep -x caddy >/dev/null && ok "Caddy ready (:80 reverse proxy)" \
+    || warn "Caddy did not start — run 'localtld doctor'"
+}
+
+# ── tld (change the machine-wide TLD) ────────────────────────────────────────
+cmd_tld() {
+  local new="${1:-}"
+  [ -n "$new" ] || die "usage: localtld tld <new-tld>   (e.g. localtld tld test)"
+  local old; old="$(get_tld)"
+  new="${new#.}"; new="$(printf '%s' "$new" | tr '[:upper:]' '[:lower:]')"
+  confirm_if_real_tld "$new"
+  sudo_notice
+  # remove the old resolver
+  [ "$old" != "$new" ] && sudo rm -f "/etc/resolver/$old" 2>/dev/null || true
+  mkdir -p "$CONFIG_DIR"
+  printf 'TLD=%s\n' "$new" > "$CONFIG_FILE"
+  apply_dns "$new"
+  ok "TLD changed: .$old → .$new  ${DIM}(restart any running projects)${RESET}"
+}
+
+# ── run (wrapper) ────────────────────────────────────────────────────────────
+cmd_run() {
+  # swallow the '--' separator
+  [ "${1:-}" = "--" ] && shift
+  [ "$#" -gt 0 ] || die "usage: localtld run -- <command>   (e.g. localtld run -- pnpm dev)"
+
+  # Does the project want localtld? (is there a label — grep fallback if no jq)
+  local label; label="$(read_label)"
+
+  # If not, run the command as-is, silently (project without localtld).
+  [ -n "$label" ] || exec "$@"
+
+  # Project wants it but the system isn't set up → offer setup on first run.
+  if [ ! -f "$CONFIG_FILE" ]; then
+    if [ "$(uname -s)" = "Darwin" ] && [ -t 1 ] && [ -r /dev/tty ]; then
+      printf '\n%s→ Running localtld for the first time.%s Setting up the domain (%s%s.%s%s) needs your password once.\n' \
+        "$BOLD" "$RESET" "$GREEN" "$label" "$DEFAULT_TLD" "$RESET" >&2
+      printf '  Set it up now? [y/N] ' >&2
+      local ans=""; read -r ans </dev/tty || ans=""
+      case "$ans" in
+        y|Y|yes|Yes)
+          if ( cmd_setup </dev/tty ); then :; else
+            printf '%s→ setup did not complete — running on localhost%s\n' "$DIM" "$RESET" >&2
+            exec "$@"
+          fi ;;
+        *)
+          printf '%s→ skipped — running on localhost (run "localtld setup" anytime)%s\n' "$DIM" "$RESET" >&2
+          exec "$@" ;;
+      esac
+    else
+      # No TTY (CI, pipe): silent localhost fallback.
+      printf '%s→ localtld not set up — running on localhost%s\n' "$DIM" "$RESET" >&2
+      exec "$@"
+    fi
+  fi
+
+  local tld; tld="$(get_tld)"
+  local host="$label.$tld"
+  local port; port="$(find_free_port)"
+  local snip="$SITES_DIR/$host.caddy"
+
+  mkdir -p "$SITES_DIR"
+  cat > "$snip" <<EOF
+http://$host {
+	reverse_proxy 127.0.0.1:$port
+}
+EOF
+  caddy_reload
+
+  # shellcheck disable=SC2317
+  cleanup() { rm -f "$snip"; caddy_reload; }
+  trap cleanup EXIT INT TERM
+
+  printf '\n  %s→ http://%s%s  %s(port %s)%s\n\n' "$GREEN" "$host" "$RESET" "$DIM" "$port" "$RESET"
+  PORT="$port" "$@"
+}
+
+# ── list ─────────────────────────────────────────────────────────────────────
+cmd_list() {
+  local tld; tld="$(get_tld)"
+  info "${BOLD}Active projects${RESET} ${DIM}(.$tld)${RESET}"
+  shopt -s nullglob
+  local any=0 f host port
+  for f in "$SITES_DIR"/*.caddy; do
+    any=1
+    host="$(basename "$f" .caddy)"
+    port="$(grep -oE '127\.0\.0\.1:[0-9]+' "$f" | head -1 | cut -d: -f2)"
+    printf '  %-42s %s→ :%s%s\n' "http://$host" "$DIM" "$port" "$RESET"
+  done
+  [ "$any" = 1 ] || info "  ${DIM}(no active projects — start one with 'localtld run -- <dev>')${RESET}"
+}
+
+# ── doctor ───────────────────────────────────────────────────────────────────
+cmd_doctor() {
+  local tld; tld="$(get_tld)"
+  info "${BOLD}localtld doctor${RESET}  ${DIM}(TLD: .$tld)${RESET}"
+  for c in brew dnsmasq caddy jq; do
+    command -v "$c" >/dev/null 2>&1 && ok "$c found" || warn "$c missing"
+  done
+  [ -f "/etc/resolver/$tld" ] && ok "resolver: /etc/resolver/$tld" || warn "no resolver — run 'localtld setup'"
+  pgrep -x dnsmasq >/dev/null && ok "dnsmasq running" || warn "dnsmasq not running"
+  pgrep -x caddy >/dev/null && ok "caddy running" || warn "caddy not running"
+  if command -v dscacheutil >/dev/null 2>&1; then
+    dscacheutil -q host -a name "ping.$tld" 2>/dev/null | grep -q 127.0.0.1 \
+      && ok "*.$tld → 127.0.0.1 resolves" || warn "*.$tld does not resolve — run 'localtld setup'"
+  fi
+}
+
+# ── uninstall ────────────────────────────────────────────────────────────────
+cmd_uninstall() {
+  local tld; tld="$(get_tld)"
+  warn "Removing localtld (dnsmasq/caddy services are left running)"
+  sudo rm -f "/etc/resolver/$tld" 2>/dev/null || true
+  rm -f "$BREW_PREFIX/etc/dnsmasq.d/localtld.conf" 2>/dev/null || true
+  rm -rf "$SITES_DIR"
+  restart_dnsmasq 2>/dev/null || true
+  sudo dscacheutil -flushcache 2>/dev/null || true
+  sudo killall mDNSResponder 2>/dev/null || true   # macOS 26: HUP isn't enough, full restart required
+  ok "resolver + DNS record + active routes removed"
+  info "  ${DIM}Config files: rm -rf $CONFIG_DIR${RESET}"
+  info "  ${DIM}To stop the services too: sudo brew services stop caddy dnsmasq${RESET}"
+}
+
+# ── usage ────────────────────────────────────────────────────────────────────
+usage() {
+  cat <<EOF
+${BOLD}localtld${RESET} $VERSION — give your local projects a domain
+
+${BOLD}Commands${RESET}
+  setup                First-time setup: choose a TLD + configure dnsmasq/caddy
+  run -- <command>     Run a project under its domain (e.g. run -- pnpm dev)
+  list                 Show active projects and their domains
+  tld <new>            Change the machine-wide TLD (e.g. tld test)
+  doctor               Check the health of your setup
+  uninstall            Revert DNS/route changes
+  version              Version
+
+${BOLD}Project config${RESET} (package.json)
+  "localtld": "panel.aaron"     →   http://panel.aaron.$(get_tld)
+
+${BOLD}Current TLD${RESET}  .$(get_tld)   ${DIM}(change: localtld tld <new>)${RESET}
+
+${DIM}https://localtld.sh${RESET}
+EOF
+}
+
+# ── dispatch ─────────────────────────────────────────────────────────────────
+# NEVER run localtld with sudo: it asks for sudo only where needed. Running the
+# whole thing as root breaks brew (path ownership) + writes config as root.
+if [ "$(id -u)" = "0" ] && [ -z "${LOCALTLD_ALLOW_ROOT:-}" ]; then
+  printf '\033[1;31m✗ Do not run localtld with sudo.\033[0m It asks for your password only where needed.\n' >&2
+  printf '  Run it like this: \033[1mlocaltld %s\033[0m\n' "$*" >&2
+  exit 1
+fi
+
+cmd="${1:-}"; shift || true
+case "$cmd" in
+  setup)             cmd_setup "$@" ;;
+  run)               cmd_run "$@" ;;
+  list|ls)           cmd_list "$@" ;;
+  tld)               cmd_tld "$@" ;;
+  doctor)            cmd_doctor "$@" ;;
+  uninstall)         cmd_uninstall "$@" ;;
+  version|--version|-v) printf 'localtld %s\n' "$VERSION" ;;
+  ""|help|--help|-h) usage ;;
+  *)                 die "unknown command: $cmd  (see 'localtld help')" ;;
+esac

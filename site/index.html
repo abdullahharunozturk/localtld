@@ -1,0 +1,266 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>localtld — give your local projects a domain</title>
+<meta name="description" content="Give your local projects a real domain on a dynamic port. Stop chasing ports — reach your app at panel.aaron.localtld. macOS, open source.">
+<meta property="og:title" content="localtld">
+<meta property="og:description" content="Give your local projects a real domain on a dynamic port. Stop chasing ports.">
+<style>
+  :root {
+    --bg: #0a0c0f;
+    --panel: #12151a;
+    --panel-2: #171b21;
+    --line: #232830;
+    --fg: #e8eaed;
+    --muted: #8b929d;
+    --accent: #7ee787;
+    --accent-dim: #4b9e56;
+    --blue: #6cb6ff;
+    --warn: #f0b429;
+    --radius: 10px;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html { scroll-behavior: smooth; }
+  body {
+    background: radial-gradient(1200px 600px at 50% -10%, #14181f 0%, var(--bg) 60%);
+    color: var(--fg);
+    font: 15px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .mono { font-family: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace; }
+  .wrap { max-width: 52rem; margin: 0 auto; padding: 0 1.25rem; }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* nav */
+  nav { display: flex; align-items: center; justify-content: space-between; padding: 1.5rem 0; }
+  nav .brand { font-family: ui-monospace, monospace; font-weight: 700; font-size: 1.05rem; letter-spacing: -.02em; }
+  nav .brand b { color: var(--accent); }
+  nav .links { display: flex; gap: 1.25rem; font-size: .9rem; }
+  nav .links a { color: var(--muted); }
+  nav .links a:hover { color: var(--fg); text-decoration: none; }
+
+  /* hero */
+  header { padding: 3.5rem 0 2.5rem; text-align: center; }
+  .badge {
+    display: inline-block; font-size: .72rem; letter-spacing: .06em; text-transform: uppercase;
+    color: var(--accent); border: 1px solid var(--line); border-radius: 100px;
+    padding: .25rem .7rem; margin-bottom: 1.4rem; background: var(--panel);
+  }
+  h1 { font-size: clamp(2.1rem, 6vw, 3.2rem); line-height: 1.05; letter-spacing: -.03em; font-weight: 800; }
+  h1 .g { color: var(--accent); }
+  header p { color: var(--muted); font-size: 1.12rem; max-width: 34rem; margin: 1rem auto 0; }
+  .cta { display: flex; gap: .75rem; justify-content: center; flex-wrap: wrap; margin-top: 2rem; }
+  .btn {
+    font-family: ui-monospace, monospace; font-size: .9rem; padding: .7rem 1.15rem; border-radius: 8px;
+    border: 1px solid var(--line); background: var(--panel); color: var(--fg); cursor: pointer;
+    display: inline-flex; align-items: center; gap: .5rem; transition: border-color .15s, background .15s;
+  }
+  .btn:hover { border-color: var(--accent-dim); text-decoration: none; }
+  .btn.primary { background: var(--accent); color: #06210b; border-color: var(--accent); font-weight: 600; }
+  .btn.primary:hover { background: #95efa0; }
+
+  /* terminal */
+  .term {
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+    overflow: hidden; text-align: left; margin: 2.5rem auto 0; max-width: 40rem;
+    box-shadow: 0 24px 60px -30px rgba(0,0,0,.8);
+  }
+  .term .bar { display: flex; gap: .5rem; padding: .7rem .9rem; border-bottom: 1px solid var(--line); background: var(--panel-2); }
+  .term .bar i { width: 11px; height: 11px; border-radius: 50%; background: #33383f; display: inline-block; }
+  .term .bar i:nth-child(1) { background: #ff5f57; }
+  .term .bar i:nth-child(2) { background: #febc2e; }
+  .term .bar i:nth-child(3) { background: #28c840; }
+  .term pre { padding: 1.1rem 1.2rem; font-size: .86rem; line-height: 1.7; overflow-x: auto; }
+  .term .c { color: var(--muted); }       /* comment / prompt */
+  .term .g { color: var(--accent); }
+  .term .b { color: var(--blue); }
+  .term .d { color: var(--muted); }
+
+  /* sections */
+  section { padding: 3rem 0; border-top: 1px solid var(--line); }
+  h2 { font-size: 1.35rem; letter-spacing: -.02em; margin-bottom: 1.25rem; }
+  h2 .n { color: var(--accent-dim); font-family: ui-monospace, monospace; font-size: .9rem; margin-right: .5rem; }
+
+  .flow {
+    font-family: ui-monospace, monospace; font-size: .8rem; line-height: 1.75; color: var(--muted);
+    background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.2rem; overflow-x: auto;
+  }
+  .flow .g { color: var(--accent); }
+  .flow .f { color: var(--fg); }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr)); gap: 1rem; }
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); padding: 1.1rem 1.15rem; }
+  .card h3 { font-size: .98rem; margin-bottom: .35rem; display: flex; align-items: center; gap: .5rem; }
+  .card h3 .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 10px var(--accent-dim); }
+  .card p { color: var(--muted); font-size: .9rem; }
+
+  table { width: 100%; border-collapse: collapse; font-size: .92rem; }
+  td { padding: .55rem .3rem; border-top: 1px solid var(--line); vertical-align: top; }
+  td:first-child { color: var(--accent); font-family: ui-monospace, monospace; white-space: nowrap; padding-right: 1.2rem; }
+  td:last-child { color: var(--muted); }
+
+  .note { border-left: 2px solid var(--warn); background: var(--panel); padding: .9rem 1.1rem; border-radius: 0 8px 8px 0; color: var(--muted); font-size: .92rem; }
+  .note b { color: var(--warn); font-weight: 600; }
+
+  .copy { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: .85rem 1rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; font-family: ui-monospace, monospace; font-size: .9rem; }
+  .copy code { color: var(--fg); overflow-x: auto; white-space: nowrap; }
+  .copy code .c { color: var(--accent); }
+  .copy button { background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: .38rem; cursor: pointer; flex: none; display: inline-flex; align-items: center; justify-content: center; line-height: 0; transition: color .15s, border-color .15s; }
+  .copy button:hover { color: var(--fg); border-color: var(--accent-dim); }
+  .cp svg { display: block; }
+  .cp.done { color: var(--accent) !important; border-color: var(--accent-dim) !important; }
+  .sub { color: var(--muted); font-size: .85rem; margin-top: .6rem; }
+
+  footer { padding: 3rem 0 4rem; border-top: 1px solid var(--line); color: var(--muted); font-size: .9rem; display: flex; justify-content: space-between; flex-wrap: wrap; gap: .5rem; }
+  .gh { color: var(--muted); display: inline-flex; align-items: center; transition: color .15s; }
+  .gh:hover { color: var(--fg); }
+  .gh svg { display: block; }
+  code.inline { font-family: ui-monospace, monospace; color: var(--accent); background: var(--panel-2); padding: .1rem .35rem; border-radius: 4px; font-size: .88em; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <nav>
+    <div class="brand">local<b>tld</b></div>
+    <div class="links">
+      <a href="#how">How it works</a>
+      <a href="#install">Install</a>
+      <a href="https://github.com/abdullahharunozturk/localtld">GitHub</a>
+    </div>
+  </nav>
+
+  <header>
+    <span class="badge">macOS · open source · MIT</span>
+    <h1>Give your local projects<br>a <span class="g">real domain</span>.</h1>
+    <p>Stop chasing ports. Whatever port your dev server grabs, reach it at
+       <code class="inline">panel.aaron.localtld</code> — every time.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">Get started</a>
+      <a class="btn" href="https://github.com/abdullahharunozturk/localtld">★ Star on GitHub</a>
+    </div>
+
+    <div class="term mono">
+      <div class="bar"><i></i><i></i><i></i></div>
+<pre><span class="c">// package.json</span>
+{ <span class="b">"localtld"</span>: <span class="g">"panel.aaron"</span> }
+
+<span class="c">$</span> localtld run -- pnpm dev
+  <span class="g">→ http://panel.aaron.localtld</span>  <span class="d">(port 63469)</span>
+  ▲ Next.js  ·  ✓ Ready</pre>
+    </div>
+  </header>
+
+  <section id="how">
+    <h2><span class="n">01</span>How it works</h2>
+    <p style="color:var(--muted); margin-bottom:1.1rem;">No magic — it orchestrates two standard tools: dnsmasq for DNS and Caddy as a reverse proxy.</p>
+    <div class="flow">
+browser → <span class="g">panel.aaron.localtld</span>
+   │  dnsmasq:  *.localtld → 127.0.0.1   <span class="f">(+ macOS /etc/resolver)</span>
+   ▼
+127.0.0.1:80 → Caddy   <span class="f">(Host header → the right port)</span>
+   ▼
+127.0.0.1:63469 ← <span class="f">your dev server</span>  <span class="f">(localtld assigned PORT)</span>
+    </div>
+  </section>
+
+  <section>
+    <h2><span class="n">02</span>Why it's nice</h2>
+    <div class="grid">
+      <div class="card">
+        <h3><span class="dot"></span>Dynamic ports</h3>
+        <p>Run hundreds of projects at once. No fixed ports, no collisions, nothing to remember.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Zero-config</h3>
+        <p>One line in <code class="inline">package.json</code>. Wire it once; every project just works.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Graceful fallback</h3>
+        <p>On a machine without localtld, projects still run on <code class="inline">localhost:PORT</code>. Nobody's blocked.</p>
+      </div>
+      <div class="card">
+        <h3><span class="dot"></span>Safe by default</h3>
+        <p><code class="inline">.localtld</code> is never a real TLD. Pick a real one and it warns you first.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="install">
+    <h2><span class="n">03</span>Install</h2>
+    <div class="copy">
+      <code><span class="c">$</span> curl -fsSL https://localtld.sh | bash</code>
+      <button class="cp" data-copy="curl -fsSL https://localtld.sh | bash">copy</button>
+    </div>
+    <div class="copy" style="margin-top:.6rem;">
+      <code><span class="c">$</span> git clone https://github.com/abdullahharunozturk/localtld</code>
+      <button class="cp" data-copy="git clone https://github.com/abdullahharunozturk/localtld">copy</button>
+    </div>
+    <p class="sub">Then run <code class="inline">localtld setup</code> once. Or <code class="inline">brew install localtld</code> (coming soon).
+       Prefer to read first? <a href="https://github.com/abdullahharunozturk/localtld/blob/master/install.sh">install.sh</a></p>
+  </section>
+
+  <section>
+    <h2><span class="n">04</span>Commands</h2>
+    <table>
+      <tr><td>setup</td><td>Choose a TLD + configure dnsmasq/Caddy</td></tr>
+      <tr><td>run -- &lt;cmd&gt;</td><td>Run a project under its domain (falls back if not set up)</td></tr>
+      <tr><td>list</td><td>Show active projects and their domains</td></tr>
+      <tr><td>tld &lt;new&gt;</td><td>Change the machine-wide TLD</td></tr>
+      <tr><td>doctor</td><td>Check the health of your setup</td></tr>
+      <tr><td>uninstall</td><td>Revert DNS/route changes</td></tr>
+    </table>
+  </section>
+
+  <section>
+    <h2><span class="n">05</span>Your TLD, your call</h2>
+    <p style="color:var(--muted); margin-bottom:1rem;">Default is <code class="inline">.localtld</code>. Shorten or brand it anytime:</p>
+    <div class="copy" style="margin-bottom:.6rem;">
+      <code><span class="c">$</span> localtld tld test        <span style="color:var(--muted)"># panel.aaron.test</span></code>
+      <button class="cp" data-copy="localtld tld test">copy</button>
+    </div>
+    <div class="copy">
+      <code><span class="c">$</span> localtld tld localtld.sh  <span style="color:var(--muted)"># panel.aaron.localtld.sh</span></code>
+      <button class="cp" data-copy="localtld tld localtld.sh">copy</button>
+    </div>
+    <p class="note" style="margin-top:1.1rem;"><b>Heads up.</b> If you pick a real TLD (<code class="inline">.com</code>, <code class="inline">.dev</code>…), every site under it resolves to 127.0.0.1 on your machine. localtld checks against the IANA root zone and asks you to confirm — so you never do it by accident.</p>
+  </section>
+
+  <footer>
+    <span>MIT © Abdullah Harun Öztürk</span>
+    <a class="gh" href="https://github.com/abdullahharunozturk/localtld" aria-label="View on GitHub" title="View on GitHub">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor"><path d="M12 .5A11.5 11.5 0 0 0 .5 12a11.5 11.5 0 0 0 7.86 10.92c.575.106.785-.25.785-.556 0-.274-.01-1-.015-1.965-3.196.695-3.87-1.54-3.87-1.54-.523-1.33-1.277-1.684-1.277-1.684-1.043-.713.08-.699.08-.699 1.153.081 1.76 1.184 1.76 1.184 1.026 1.758 2.692 1.25 3.348.956.104-.744.401-1.25.73-1.538-2.553-.29-5.236-1.276-5.236-5.68 0-1.255.448-2.28 1.183-3.084-.119-.29-.513-1.46.112-3.043 0 0 .965-.309 3.163 1.178a11 11 0 0 1 2.88-.387c.977.004 1.96.132 2.88.387 2.196-1.487 3.16-1.178 3.16-1.178.626 1.583.232 2.753.114 3.043.737.804 1.18 1.829 1.18 3.084 0 4.415-2.687 5.386-5.247 5.67.412.355.78 1.056.78 2.13 0 1.538-.014 2.777-.014 3.155 0 .308.207.667.79.554A11.5 11.5 0 0 0 23.5 12 11.5 11.5 0 0 0 12 .5"/></svg>
+    </a>
+  </footer>
+
+</div>
+
+<script>
+  // open external links in a new tab
+  document.querySelectorAll('a[href^="http"]').forEach(function (a) {
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+  });
+
+  var COPY_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
+  var CHECK_ICON = '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>';
+  document.querySelectorAll('button.cp').forEach(function (b) {
+    b.innerHTML = COPY_ICON;
+    b.setAttribute('aria-label', 'Copy');
+    b.setAttribute('title', 'Copy');
+    b.addEventListener('click', function () {
+      navigator.clipboard.writeText(b.dataset.copy).then(function () {
+        b.innerHTML = CHECK_ICON;
+        b.classList.add('done');
+        setTimeout(function () { b.innerHTML = COPY_ICON; b.classList.remove('done'); }, 1300);
+      });
+    });
+  });
+</script>
+</body>
+</html>

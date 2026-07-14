@@ -1,0 +1,16 @@
+# localtld base Caddyfile (reference).
+# `localtld setup` writes this to $(brew --prefix)/etc/Caddyfile.
+# Each running project drops a ~/.config/localtld/sites/<host>.caddy snippet,
+# and localtld applies it with `caddy reload`.
+
+{
+	auto_https off
+}
+
+# example snippet (sites/panel.aaron.localtld.caddy):
+#
+# http://panel.aaron.localtld {
+# 	reverse_proxy 127.0.0.1:51234
+# }
+
+import ~/.config/localtld/sites/*.caddy

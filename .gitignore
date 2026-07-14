@@ -1,0 +1,10 @@
+# macOS
+.DS_Store
+
+# local test / temporary
+*.log
+tmp/
+.cache/
+
+# IANA TLD cache (downloaded by setup)
+iana-tlds.txt

@@ -1,0 +1,40 @@
+{
+  "name": "localtld",
+  "version": "0.1.0",
+  "description": "Give your local projects real domains on dynamic ports — access panel.aaron.localtld instead of chasing ports.",
+  "bin": {
+    "localtld": "bin/localtld"
+  },
+  "files": [
+    "bin",
+    "share",
+    "README.md",
+    "LICENSE"
+  ],
+  "os": [
+    "darwin"
+  ],
+  "keywords": [
+    "localhost",
+    "dns",
+    "dnsmasq",
+    "caddy",
+    "reverse-proxy",
+    "dev",
+    "devtools",
+    "domain",
+    "tld",
+    "dx",
+    "local-development"
+  ],
+  "homepage": "https://localtld.sh",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/abdullahharunozturk/localtld.git"
+  },
+  "bugs": {
+    "url": "https://github.com/abdullahharunozturk/localtld/issues"
+  },
+  "author": "Abdullah Harun Öztürk",
+  "license": "MIT"
+}
