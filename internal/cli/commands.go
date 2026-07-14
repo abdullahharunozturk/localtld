@@ -20,6 +20,9 @@ func Setup() error {
 	tld := config.GetTLD()
 	fmt.Println(bold("localtld setup"))
 	fmt.Printf("  TLD: .%s\n", tld)
+	if err := confirmTLD(tld); err != nil {
+		return err
+	}
 	if err := config.SetTLD(tld); err != nil {
 		return err
 	}
@@ -82,6 +85,9 @@ func TLD(args []string) error {
 	newTLD := strings.TrimPrefix(strings.TrimSpace(args[0]), ".")
 	if newTLD == "" {
 		return errors.New("tld cannot be empty")
+	}
+	if err := confirmTLD(newTLD); err != nil {
+		return err
 	}
 	wasSetup := config.IsSetup()
 	old := config.GetTLD()
