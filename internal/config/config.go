@@ -1,6 +1,6 @@
 // Package config holds localtld's machine-level settings and project-label lookup.
 //
-//   - TLD is machine-level  (~/.config/localtld/config → "tld=...")
+//   - TLD is machine-level  (~/.config/localtld/config → "TLD=...")
 //   - label is project-level (package.json → "localtld": "panel.aaron")
 package config
 
@@ -44,27 +44,31 @@ func IsSetup() bool {
 }
 
 // GetTLD returns the machine TLD, defaulting to DefaultTLD when unset.
+// The config is a dotenv/shell-style "TLD=<value>" line (last wins); reading is
+// case-insensitive to tolerate hand edits.
 func GetTLD() string {
 	b, err := os.ReadFile(File())
 	if err != nil {
 		return DefaultTLD
 	}
+	tld := DefaultTLD
 	for _, line := range strings.Split(string(b), "\n") {
-		if v, ok := strings.CutPrefix(strings.TrimSpace(line), "tld="); ok {
-			if v = strings.TrimSpace(v); v != "" {
-				return v
+		line = strings.TrimSpace(line)
+		if len(line) >= 4 && strings.EqualFold(line[:4], "TLD=") {
+			if v := strings.TrimSpace(line[4:]); v != "" {
+				tld = v
 			}
 		}
 	}
-	return DefaultTLD
+	return tld
 }
 
-// SetTLD persists the machine TLD.
+// SetTLD persists the machine TLD in the dotenv-style "TLD=" (uppercase key).
 func SetTLD(tld string) error {
 	if err := os.MkdirAll(Dir(), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(File(), []byte("tld="+tld+"\n"), 0o644)
+	return os.WriteFile(File(), []byte("TLD="+tld+"\n"), 0o644)
 }
 
 // ReadLabel returns the "localtld" field from package.json in dir, or "".
