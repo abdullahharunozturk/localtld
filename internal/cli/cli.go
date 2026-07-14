@@ -21,6 +21,12 @@ func dim(s string) string   { return paint("2", s) }
 func bold(s string) string  { return paint("1", s) }
 func green(s string) string { return paint("32", s) }
 
+// isTTY reports whether f is an interactive terminal.
+func isTTY(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
 // Usage prints the help text.
 func Usage(version string) {
 	fmt.Printf(`localtld %s — give your local projects a domain

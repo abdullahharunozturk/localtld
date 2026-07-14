@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"strings"
 
 	"github.com/abdullahharunozturk/localtld/internal/config"
 	"github.com/abdullahharunozturk/localtld/internal/netutil"
@@ -28,10 +29,16 @@ func Run(args []string) error {
 	if label == "" {
 		return execCommand(args, nil)
 	}
-	// Opted in but the machine isn't set up → localhost fallback.
+	// Opted in but not set up → offer setup on an interactive terminal,
+	// otherwise fall back to localhost.
 	if !config.IsSetup() {
-		fmt.Fprintln(os.Stderr, dim(`→ localtld not set up — running on localhost (run "localtld setup")`))
-		return execCommand(args, nil)
+		if !offerSetup(label) {
+			return execCommand(args, nil)
+		}
+		if err := Setup(); err != nil {
+			fmt.Fprintln(os.Stderr, dim("→ setup did not complete — running on localhost"))
+			return execCommand(args, nil)
+		}
 	}
 
 	host := label + "." + config.GetTLD()
@@ -54,6 +61,27 @@ func Run(args []string) error {
 
 	fmt.Fprintf(os.Stderr, "\n  %s  %s\n\n", green("→ http://"+host), dim(fmt.Sprintf("(port %d)", port)))
 	return execCommand(args, []string{"PORT=" + fmt.Sprint(port)})
+}
+
+// offerSetup asks the user (on an interactive terminal) whether to run first-time
+// setup. On a non-TTY (CI, pipe) it silently declines and notes the localhost run.
+func offerSetup(label string) bool {
+	if !isTTY(os.Stdin) || !isTTY(os.Stderr) {
+		fmt.Fprintln(os.Stderr, dim(`→ localtld not set up — running on localhost (run "localtld setup")`))
+		return false
+	}
+	fmt.Fprintf(os.Stderr, "\n%s Setting up the domain (%s) needs your password once.\n",
+		bold("→ Running localtld for the first time."), green(label+"."+config.GetTLD()))
+	fmt.Fprint(os.Stderr, "  Set it up now? [y/N] ")
+	var ans string
+	_, _ = fmt.Fscanln(os.Stdin, &ans)
+	switch strings.ToLower(strings.TrimSpace(ans)) {
+	case "y", "yes":
+		return true
+	default:
+		fmt.Fprintln(os.Stderr, dim(`  skipped — running on localhost (run "localtld setup" anytime)`))
+		return false
+	}
 }
 
 // execCommand runs the wrapped command, inheriting stdio and propagating its
