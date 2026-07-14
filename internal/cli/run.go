@@ -5,7 +5,10 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/signal"
+	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/abdullahharunozturk/localtld/internal/config"
 	"github.com/abdullahharunozturk/localtld/internal/netutil"
@@ -54,13 +57,30 @@ func Run(args []string) error {
 		fmt.Fprintln(os.Stderr, dim("→ caddy reload failed — running on localhost"))
 		return execCommand(args, nil)
 	}
-	defer func() {
+	cleanup := func() {
 		_ = proxy.RemoveSite(host)
 		_ = proxy.Reload()
-	}()
+	}
+	// Ensure cleanup runs even on Ctrl-C: catch the signal so we survive long
+	// enough to tidy the snippet. The child also receives it from the terminal
+	// and shuts itself down, which returns cmd.Run below. (execCommand's os.Exit
+	// would otherwise skip a deferred cleanup entirely.)
+	sigc := make(chan os.Signal, 1)
+	signal.Notify(sigc, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(sigc)
 
 	fmt.Fprintf(os.Stderr, "\n  %s  %s\n\n", green("→ http://"+host), dim(fmt.Sprintf("(port %d)", port)))
-	return execCommand(args, []string{"PORT=" + fmt.Sprint(port)})
+	cmd := exec.Command(args[0], args[1:]...)
+	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	cmd.Env = append(os.Environ(), "PORT="+strconv.Itoa(port))
+	runErr := cmd.Run()
+
+	cleanup()
+	var ee *exec.ExitError
+	if errors.As(runErr, &ee) {
+		os.Exit(ee.ExitCode())
+	}
+	return runErr
 }
 
 // offerSetup asks the user (on an interactive terminal) whether to run first-time

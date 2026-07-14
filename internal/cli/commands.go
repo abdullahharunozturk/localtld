@@ -40,6 +40,8 @@ func apply(tld string) error {
 	if err := proxy.WriteBase(); err != nil {
 		return err
 	}
+	// Take over :53/:80 from any brew dnsmasq/caddy (e.g. bash-era leftovers).
+	freeConflictingServices()
 	self, err := os.Executable()
 	if err != nil {
 		return err
